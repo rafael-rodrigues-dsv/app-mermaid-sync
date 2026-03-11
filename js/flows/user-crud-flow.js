@@ -1,5 +1,6 @@
 /**
  * Flow: CRUD completo de Usuário
+ * Sequence diagram com raias: Cliente, Auth, User API, PostgreSQL, Redis
  */
 const UserCrudFlow = {
     id: 'user-crud-flow',
@@ -10,22 +11,73 @@ const UserCrudFlow = {
         email: 'admin@test.com',
         password: 'admin123'
     },
-    diagram: `graph TD
-        START([🚀 Início]) --> LOGIN[🔐 POST /auth/login]
-        LOGIN -->|200 OK| LIST[📋 GET /users]
-        LOGIN -->|401| ERR_LOGIN[❌ Login Falhou]
-        LIST -->|200 OK| CREATE[➕ POST /users]
-        CREATE -->|201 Created| GET_ONE[🔍 GET /users/:id]
-        GET_ONE -->|200 OK| UPDATE[✏️ PUT /users/:id]
-        UPDATE -->|200 OK| DELETE_USER[🗑️ DELETE /users/:id]
-        DELETE_USER -->|200 OK| VERIFY[📋 GET /users - Verificar]
-        VERIFY --> FIM([✅ CRUD Completo])
-        ERR_LOGIN --> FIM_ERR([❌ Fim com Erro])
+    diagram: `sequenceDiagram
+        box rgb(30,40,60) 🖥️ Cliente
+            participant Client as 🌐 Browser
+        end
+        box rgb(40,30,55) 🔐 Auth
+            participant Auth as 🔐 Auth API
+        end
+        box rgb(30,45,35) 👤 User Service
+            participant User as 👤 User API
+        end
+        box rgb(50,30,30) 🗄️ Banco Relacional
+            participant PG as 🐘 PostgreSQL
+        end
+        box rgb(55,25,25) ⚡ Cache
+            participant Redis as ⚡ Redis
+        end
 
-        style START fill:#1f6feb,stroke:#58a6ff,color:#fff
-        style FIM fill:#238636,stroke:#3fb950,color:#fff
-        style FIM_ERR fill:#da3633,stroke:#f85149,color:#fff
-        style ERR_LOGIN fill:#da3633,stroke:#f85149,color:#fff`,
+        Client->>+Auth: POST /auth/login (admin)
+        Auth->>+PG: SELECT user WHERE email
+        PG-->>-Auth: User row
+        Auth-->>-Client: 200 { token }
+
+        Note over Client,Redis: 📋 LIST - Listar todos os usuários
+        Client->>+User: GET /users 🔑
+        User->>+PG: SELECT * FROM users
+        PG-->>-User: 3 rows
+        User-->>-Client: 200 { data: [3 users] }
+
+        Note over Client,Redis: ➕ CREATE - Criar novo usuário
+        Client->>+User: POST /users { name, email }
+        User->>+PG: INSERT INTO users
+        PG-->>-User: 201 new row
+        User->>+Redis: DEL cache:users:list
+        Redis-->>-User: Invalidated
+        User-->>-Client: 201 { id: usr_new }
+
+        Note over Client,Redis: 🔍 READ - Buscar usuário criado
+        Client->>+User: GET /users/usr_new
+        User->>+Redis: GET cache:user:usr_new
+        Redis-->>-User: MISS
+        User->>+PG: SELECT * FROM users WHERE id
+        PG-->>-User: User row
+        User->>+Redis: SET cache:user:usr_new
+        Redis-->>-User: Cached
+        User-->>-Client: 200 user details
+
+        Note over Client,Redis: ✏️ UPDATE - Atualizar usuário
+        Client->>+User: PUT /users/usr_new { name, role }
+        User->>+PG: UPDATE users SET name, role
+        PG-->>-User: Updated
+        User->>+Redis: DEL cache:user:usr_new
+        Redis-->>-User: Invalidated
+        User-->>-Client: 200 updated
+
+        Note over Client,Redis: 🗑️ DELETE - Remover usuário
+        Client->>+User: DELETE /users/usr_new
+        User->>+PG: DELETE FROM users WHERE id
+        PG-->>-User: Deleted
+        User->>+Redis: DEL cache:user:usr_new
+        Redis-->>-User: Cleaned
+        User-->>-Client: 200 deleted
+
+        Note over Client,Redis: ✅ VERIFY - Confirmar remoção
+        Client->>+User: GET /users (verify)
+        User->>+PG: SELECT * FROM users
+        PG-->>-User: 3 rows (back to original)
+        User-->>-Client: 200 { data: [3 users] }`,
     steps: [
         {
             id: 'LOGIN',
@@ -34,7 +86,8 @@ const UserCrudFlow = {
             url: '{{baseUrl}}/auth/login',
             body: { email: '{{email}}', password: '{{password}}' },
             extract: { token: 'token' },
-            validate: { status: 200 }
+            validate: { status: 200 },
+            messageCount: 4
         },
         {
             id: 'LIST',
@@ -43,7 +96,8 @@ const UserCrudFlow = {
             url: '{{baseUrl}}/users',
             headers: { 'Authorization': 'Bearer {{token}}', 'Content-Type': 'application/json' },
             extract: { totalBefore: 'total' },
-            validate: { status: 200 }
+            validate: { status: 200 },
+            messageCount: 4
         },
         {
             id: 'CREATE',
@@ -51,13 +105,10 @@ const UserCrudFlow = {
             method: 'POST',
             url: '{{baseUrl}}/users',
             headers: { 'Authorization': 'Bearer {{token}}', 'Content-Type': 'application/json' },
-            body: {
-                name: 'Novo Usuário Teste',
-                email: 'novo@test.com',
-                role: 'user'
-            },
+            body: { name: 'Novo Usuário Teste', email: 'novo@test.com', role: 'user' },
             extract: { newUserId: 'id', newUserName: 'name' },
-            validate: { status: 201 }
+            validate: { status: 201 },
+            messageCount: 6
         },
         {
             id: 'GET_ONE',
@@ -65,7 +116,8 @@ const UserCrudFlow = {
             method: 'GET',
             url: '{{baseUrl}}/users/{{newUserId}}',
             headers: { 'Authorization': 'Bearer {{token}}', 'Content-Type': 'application/json' },
-            validate: { status: 200 }
+            validate: { status: 200 },
+            messageCount: 8
         },
         {
             id: 'UPDATE',
@@ -73,12 +125,9 @@ const UserCrudFlow = {
             method: 'PUT',
             url: '{{baseUrl}}/users/{{newUserId}}',
             headers: { 'Authorization': 'Bearer {{token}}', 'Content-Type': 'application/json' },
-            body: {
-                name: 'Usuário Atualizado',
-                email: 'atualizado@test.com',
-                role: 'admin'
-            },
-            validate: { status: 200 }
+            body: { name: 'Usuário Atualizado', email: 'atualizado@test.com', role: 'admin' },
+            validate: { status: 200 },
+            messageCount: 6
         },
         {
             id: 'DELETE_USER',
@@ -86,7 +135,8 @@ const UserCrudFlow = {
             method: 'DELETE',
             url: '{{baseUrl}}/users/{{newUserId}}',
             headers: { 'Authorization': 'Bearer {{token}}', 'Content-Type': 'application/json' },
-            validate: { status: 200 }
+            validate: { status: 200 },
+            messageCount: 6
         },
         {
             id: 'VERIFY',
@@ -95,7 +145,8 @@ const UserCrudFlow = {
             url: '{{baseUrl}}/users',
             headers: { 'Authorization': 'Bearer {{token}}', 'Content-Type': 'application/json' },
             extract: { totalAfter: 'total' },
-            validate: { status: 200 }
+            validate: { status: 200 },
+            messageCount: 4
         }
     ]
 };

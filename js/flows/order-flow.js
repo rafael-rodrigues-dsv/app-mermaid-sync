@@ -1,5 +1,6 @@
 /**
  * Flow: Criar Pedido → Processar Pagamento → Notificar
+ * Sequence diagram com raias: Cliente, APIs, Pagamento, Banco, Fila, Notificações
  */
 const OrderFlow = {
     id: 'order-flow',
@@ -10,28 +11,63 @@ const OrderFlow = {
         email: 'admin@test.com',
         password: 'admin123'
     },
-    diagram: `graph TD
-        START([🚀 Início]) --> LOGIN[🔐 POST /auth/login]
-        LOGIN -->|200 OK| CREATE_ORDER[📦 POST /orders]
-        LOGIN -->|401| ERR_LOGIN[❌ Login Falhou]
-        CREATE_ORDER -->|201 Created| PROCESS_PAY[💳 POST /payments]
-        CREATE_ORDER -->|400| ERR_ORDER[❌ Pedido Inválido]
-        PROCESS_PAY -->|200 Approved| UPDATE_STATUS[📋 PUT /orders/:id/status]
-        PROCESS_PAY -->|402| ERR_PAY[❌ Pagamento Recusado]
-        UPDATE_STATUS -->|200 OK| SEND_EMAIL[📧 POST /notifications/email]
-        SEND_EMAIL -->|200 OK| SEND_PUSH[📱 POST /notifications/push]
-        SEND_PUSH --> GET_ORDER[🔍 GET /orders/:id]
-        GET_ORDER --> FIM([✅ Pedido Completo])
-        ERR_LOGIN --> FIM_ERR([❌ Fim com Erro])
-        ERR_ORDER --> FIM_ERR
-        ERR_PAY --> FIM_ERR
+    diagram: `sequenceDiagram
+        box rgb(30,40,60) 🖥️ Cliente
+            participant Client as 🌐 Browser
+        end
+        box rgb(25,50,40) 🔀 APIs
+            participant Auth as 🔐 Auth
+            participant Order as 📦 Order API
+        end
+        box rgb(55,30,50) 💳 Pagamento
+            participant Pay as 💳 Payment API
+            participant PayGW as 🏦 Gateway Externo
+        end
+        box rgb(50,30,30) 🗄️ Banco de Dados
+            participant PG as 🐘 PostgreSQL
+        end
+        box rgb(45,40,20) 📨 Mensageria
+            participant Queue as 📨 RabbitMQ
+        end
+        box rgb(35,25,55) 📧 Notificações
+            participant Email as 📧 SMTP
+            participant Push as 📱 Push Service
+        end
 
-        style START fill:#1f6feb,stroke:#58a6ff,color:#fff
-        style FIM fill:#238636,stroke:#3fb950,color:#fff
-        style FIM_ERR fill:#da3633,stroke:#f85149,color:#fff
-        style ERR_LOGIN fill:#da3633,stroke:#f85149,color:#fff
-        style ERR_ORDER fill:#da3633,stroke:#f85149,color:#fff
-        style ERR_PAY fill:#da3633,stroke:#f85149,color:#fff`,
+        Client->>+Auth: POST /auth/login
+        Auth->>+PG: SELECT user by email
+        PG-->>-Auth: User found
+        Auth-->>-Client: 200 { token }
+
+        Client->>+Order: POST /orders (items[])
+        Order->>+PG: INSERT INTO orders
+        PG-->>-Order: 201 order created
+        Order-->>-Client: 201 { orderId, total }
+
+        Client->>+Pay: POST /payments
+        Pay->>+PayGW: Process credit card
+        PayGW-->>-Pay: Approved ✅
+        Pay->>+PG: INSERT INTO payments
+        PG-->>-Pay: Payment recorded
+        Pay-->>-Client: 200 { approved }
+
+        Client->>+Order: PUT /orders/:id/status
+        Order->>+PG: UPDATE orders SET confirmed
+        PG-->>-Order: Updated
+        Order->>+Queue: PUBLISH order.confirmed
+        Queue-->>-Order: ACK
+        Order-->>-Client: 200 { confirmed }
+
+        Client->>+Email: POST /notifications/email
+        Email-->>-Client: 200 { sent }
+
+        Client->>+Push: POST /notifications/push
+        Push-->>-Client: 200 { delivered }
+
+        Client->>+Order: GET /orders/:id
+        Order->>+PG: SELECT order by id
+        PG-->>-Order: Order data
+        Order-->>-Client: 200 { order details }`,
     steps: [
         {
             id: 'LOGIN',
@@ -40,7 +76,8 @@ const OrderFlow = {
             url: '{{baseUrl}}/auth/login',
             body: { email: '{{email}}', password: '{{password}}' },
             extract: { token: 'token', userId: 'user.id' },
-            validate: { status: 200 }
+            validate: { status: 200 },
+            messageCount: 4
         },
         {
             id: 'CREATE_ORDER',
@@ -56,7 +93,8 @@ const OrderFlow = {
                 ]
             },
             extract: { orderId: 'id', orderTotal: 'total' },
-            validate: { status: 201 }
+            validate: { status: 201 },
+            messageCount: 4
         },
         {
             id: 'PROCESS_PAY',
@@ -64,14 +102,11 @@ const OrderFlow = {
             method: 'POST',
             url: '{{baseUrl}}/payments',
             headers: { 'Authorization': 'Bearer {{token}}', 'Content-Type': 'application/json' },
-            body: {
-                orderId: '{{orderId}}',
-                amount: '{{orderTotal}}',
-                method: 'credit_card'
-            },
+            body: { orderId: '{{orderId}}', amount: '{{orderTotal}}', method: 'credit_card' },
             extract: { paymentId: 'id', transactionId: 'transactionId' },
             validate: { status: 200 },
-            continueOnError: false
+            continueOnError: false,
+            messageCount: 6
         },
         {
             id: 'UPDATE_STATUS',
@@ -80,7 +115,8 @@ const OrderFlow = {
             url: '{{baseUrl}}/orders/{{orderId}}/status',
             headers: { 'Authorization': 'Bearer {{token}}', 'Content-Type': 'application/json' },
             body: { status: 'confirmed' },
-            validate: { status: 200 }
+            validate: { status: 200 },
+            messageCount: 6
         },
         {
             id: 'SEND_EMAIL',
@@ -88,15 +124,11 @@ const OrderFlow = {
             method: 'POST',
             url: '{{baseUrl}}/notifications/email',
             headers: { 'Authorization': 'Bearer {{token}}', 'Content-Type': 'application/json' },
-            body: {
-                to: '{{email}}',
-                subject: 'Pedido Confirmado',
-                template: 'order_confirmation',
-                data: { orderId: '{{orderId}}', total: '{{orderTotal}}' }
-            },
+            body: { to: '{{email}}', subject: 'Pedido Confirmado', template: 'order_confirmation', data: { orderId: '{{orderId}}', total: '{{orderTotal}}' } },
             extract: { emailNotifId: 'id' },
             validate: { status: 200 },
-            continueOnError: true
+            continueOnError: true,
+            messageCount: 2
         },
         {
             id: 'SEND_PUSH',
@@ -104,13 +136,10 @@ const OrderFlow = {
             method: 'POST',
             url: '{{baseUrl}}/notifications/push',
             headers: { 'Authorization': 'Bearer {{token}}', 'Content-Type': 'application/json' },
-            body: {
-                userId: '{{userId}}',
-                title: 'Pedido Confirmado! 🎉',
-                body: 'Seu pedido {{orderId}} foi confirmado.'
-            },
+            body: { userId: '{{userId}}', title: 'Pedido Confirmado! 🎉', body: 'Seu pedido {{orderId}} foi confirmado.' },
             validate: { status: 200 },
-            continueOnError: true
+            continueOnError: true,
+            messageCount: 2
         },
         {
             id: 'GET_ORDER',
@@ -118,7 +147,8 @@ const OrderFlow = {
             method: 'GET',
             url: '{{baseUrl}}/orders/{{orderId}}',
             headers: { 'Authorization': 'Bearer {{token}}', 'Content-Type': 'application/json' },
-            validate: { status: 200 }
+            validate: { status: 200 },
+            messageCount: 4
         }
     ]
 };

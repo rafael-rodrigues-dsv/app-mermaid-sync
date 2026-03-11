@@ -1,5 +1,6 @@
 /**
  * Flow: E-Commerce completo - API + Fila + PG + Mongo + Redis + APIs Externas
+ * Sequence diagram com raias: Cliente, APIs Externas, PostgreSQL, Pagamento, Mensageria, MongoDB, Redis, Notificações
  */
 const FullIntegrationFlow = {
     id: 'full-integration-flow',
@@ -10,134 +11,157 @@ const FullIntegrationFlow = {
         email: 'admin@test.com',
         password: 'admin123'
     },
-    diagram: `graph TD
-        START([🚀 Cliente faz Checkout]) --> LOGIN[🔐 POST /auth/login]
-        LOGIN -->|200 OK| CEP[🌍 POST /external/cep<br/>Buscar endereço]
-        LOGIN -->|401| ERR[❌ Erro]
+    diagram: `sequenceDiagram
+        box rgb(30,40,60) 🖥️ Cliente
+            participant App as 📱 Checkout App
+        end
+        box rgb(20,50,50) 🌍 APIs Externas
+            participant CEP as 🌍 ViaCEP
+            participant Ship as 🚚 Frete API
+            participant FX as 💱 Câmbio API
+            participant Score as 📊 Credit Score
+        end
+        box rgb(50,30,30) 🐘 Banco Relacional
+            participant PG as 🐘 PostgreSQL
+        end
+        box rgb(50,20,50) 💳 Pagamento
+            participant Pay as 💳 Payment Gateway
+        end
+        box rgb(55,40,15) 📨 Mensageria
+            participant RMQ as 📨 RabbitMQ
+        end
+        box rgb(30,45,25) 🍃 Banco NoSQL
+            participant Mongo as 🍃 MongoDB
+        end
+        box rgb(55,25,25) ⚡ Cache
+            participant Redis as ⚡ Redis
+        end
+        box rgb(40,30,55) 📧 Notificações
+            participant Email as 📧 Email Service
+            participant Push as 📱 Push Service
+        end
 
-        CEP -->|endereço| FRETE[🚚 POST /external/shipping<br/>Calcular frete]
-        FRETE -->|opções| CAMBIO[💱 POST /external/exchange-rate<br/>USD → BRL]
-        CAMBIO -->|rate| PG_INSERT[🐘 POST /db/pg/query<br/>INSERT order]
+        Note over App,Push: 🌍 Consultar Endereço (ViaCEP)
+        App->>+CEP: POST /external/cep {01001-000}
+        CEP-->>-App: Praça da Sé, São Paulo-SP
 
-        PG_INSERT -->|201| PAYMENT[💳 POST /payments<br/>Processar pagamento]
-        PAYMENT -->|approved| PG_UPDATE[🐘 POST /db/pg/query<br/>UPDATE order status]
-        PAYMENT -->|402| ERR_PAY[❌ Pagamento Recusado]
+        Note over App,Push: 🚚 Calcular Frete
+        App->>+Ship: POST /external/shipping/calculate
+        Note right of Ship: from: 04543-907<br/>to: 01001-000<br/>weight: 2.5kg
+        Ship-->>-App: 3 opções (R$15.90 ~ R$45.00)
 
-        PG_UPDATE -->|updated| Q_PUBLISH[📤 POST /queue/publish<br/>order.confirmed event]
-        Q_PUBLISH -->|published| MONGO_LOG[🍃 POST /db/mongo/insert<br/>order_events log]
-        MONGO_LOG -->|inserted| CACHE[⚡ POST /db/redis/set<br/>Cache do pedido]
+        Note over App,Push: 💱 Consultar Câmbio USD→BRL
+        App->>+FX: POST /external/exchange-rate
+        FX-->>-App: rate: 4.97
 
-        CACHE -->|OK| EMAIL[📧 POST /notifications/email<br/>Confirmação]
-        EMAIL -->|sent| PUSH[📱 POST /notifications/push<br/>Push notification]
+        Note over App,Push: 🐘 Criar Pedido no PostgreSQL
+        App->>+PG: INSERT INTO orders (user_id, total, shipping)
+        PG-->>-App: 201 RETURNING id (ord_new_001)
 
-        PUSH -->|delivered| SCORE[📊 POST /external/credit-score<br/>Atualizar score]
-        SCORE --> FIM([✅ Checkout Completo])
+        Note over App,Push: 💳 Processar Pagamento
+        App->>+Pay: POST /payments {R$159.97, credit_card}
+        Pay-->>-App: approved (txn_001)
 
-        ERR --> FIM_ERR([❌ Fim com Erro])
-        ERR_PAY --> FIM_ERR
+        Note over App,Push: 🐘 Atualizar Status do Pedido
+        App->>+PG: UPDATE orders SET status='confirmed'
+        PG-->>-App: updated
 
-        style START fill:#1f6feb,stroke:#58a6ff,color:#fff
-        style FIM fill:#238636,stroke:#3fb950,color:#fff
-        style FIM_ERR fill:#da3633,stroke:#f85149,color:#fff
-        style ERR fill:#da3633,stroke:#f85149,color:#fff
-        style ERR_PAY fill:#da3633,stroke:#f85149,color:#fff
+        Note over App,Push: 📨 Publicar Evento order.confirmed
+        App->>+RMQ: PUBLISH order.events / order.confirmed
+        Note right of RMQ: exchange: order.events<br/>routingKey: order.confirmed
+        RMQ-->>-App: ACK (msg_id)
 
-        style CEP fill:#0891b2,stroke:#22d3ee,color:#fff
-        style FRETE fill:#0891b2,stroke:#22d3ee,color:#fff
-        style CAMBIO fill:#0891b2,stroke:#22d3ee,color:#fff
-        style SCORE fill:#0891b2,stroke:#22d3ee,color:#fff
+        Note over App,Push: 🍃 Registrar Evento no MongoDB
+        App->>+Mongo: insertOne(order_events, {checkout.completed})
+        Mongo-->>-App: insertedId
 
-        style PG_INSERT fill:#336791,stroke:#58a6ff,color:#fff
-        style PG_UPDATE fill:#336791,stroke:#58a6ff,color:#fff
+        Note over App,Push: ⚡ Cache do Pedido no Redis
+        App->>+Redis: SET order:ord_new_001 (TTL 7200)
+        Redis-->>-App: OK
 
-        style Q_PUBLISH fill:#d29922,stroke:#f0c000,color:#000
-        style MONGO_LOG fill:#4db33d,stroke:#3fb950,color:#fff
-        style CACHE fill:#dc382d,stroke:#f85149,color:#fff
+        Note over App,Push: 📧 Email de Confirmação
+        App->>+Email: POST /notifications/email
+        Note right of Email: to: admin@test.com<br/>template: checkout_complete
+        Email-->>-App: sent ✅
 
-        style PAYMENT fill:#7c3aed,stroke:#a78bfa,color:#fff
-        style EMAIL fill:#6e40c9,stroke:#bc8cff,color:#fff
-        style PUSH fill:#6e40c9,stroke:#bc8cff,color:#fff`,
+        Note over App,Push: 📱 Push Notification
+        App->>+Push: POST /notifications/push
+        Push-->>-App: delivered ✅
+
+        Note over App,Push: 📊 Consultar Credit Score
+        App->>+Score: POST /external/credit-score {CPF}
+        Score-->>-App: score: 780, risk: low ✅`,
     steps: [
-        {
-            id: 'LOGIN',
-            name: 'Login do Cliente',
-            method: 'POST',
-            url: '{{baseUrl}}/auth/login',
-            body: { email: '{{email}}', password: '{{password}}' },
-            extract: { token: 'token', userId: 'user.id', userName: 'user.name' },
-            validate: { status: 200 }
-        },
         {
             id: 'CEP',
             name: 'Buscar Endereço (API Externa)',
             method: 'POST',
             url: '{{baseUrl}}/external/cep',
-            headers: { 'Authorization': 'Bearer {{token}}', 'Content-Type': 'application/json' },
             body: { cep: '01001-000' },
             extract: { cidade: 'cidade', estado: 'estado', logradouro: 'logradouro' },
-            validate: { status: 200 }
+            validate: { status: 200 },
+            messageCount: 2
         },
         {
             id: 'FRETE',
             name: 'Calcular Frete (API Externa)',
             method: 'POST',
             url: '{{baseUrl}}/external/shipping/calculate',
-            headers: { 'Authorization': 'Bearer {{token}}', 'Content-Type': 'application/json' },
             body: { from: '04543-907', to: '01001-000', weight: 2.5 },
             extract: { shippingOptions: 'options', cheapestShipping: 'options.0.price' },
-            validate: { status: 200 }
+            validate: { status: 200 },
+            messageCount: 2
         },
         {
             id: 'CAMBIO',
             name: 'Consultar Câmbio USD→BRL',
             method: 'POST',
             url: '{{baseUrl}}/external/exchange-rate',
-            headers: { 'Authorization': 'Bearer {{token}}', 'Content-Type': 'application/json' },
             body: { from: 'USD', to: 'BRL' },
             extract: { exchangeRate: 'rate' },
-            validate: { status: 200 }
+            validate: { status: 200 },
+            messageCount: 2
         },
         {
             id: 'PG_INSERT',
             name: 'Criar Pedido no PostgreSQL',
             method: 'POST',
             url: '{{baseUrl}}/db/pg/query',
-            headers: { 'Authorization': 'Bearer {{token}}', 'Content-Type': 'application/json' },
             body: {
                 sql: 'INSERT INTO orders (user_id, total, shipping_cost, status, address) VALUES ($1, $2, $3, $4, $5) RETURNING id',
-                params: ['{{userId}}', 159.97, '{{cheapestShipping}}', 'pending', '{{logradouro}}, {{cidade}}-{{estado}}']
+                params: ['usr_001', 159.97, '{{cheapestShipping}}', 'pending', '{{logradouro}}, {{cidade}}-{{estado}}']
             },
             extract: { orderId: 'rows.0.id' },
-            validate: { status: 201 }
+            validate: { status: 201 },
+            messageCount: 2
         },
         {
             id: 'PAYMENT',
             name: 'Processar Pagamento',
             method: 'POST',
             url: '{{baseUrl}}/payments',
-            headers: { 'Authorization': 'Bearer {{token}}', 'Content-Type': 'application/json' },
             body: { orderId: '{{orderId}}', amount: 159.97, method: 'credit_card' },
             extract: { paymentId: 'id', transactionId: 'transactionId' },
-            validate: { status: 200 }
+            validate: { status: 200 },
+            messageCount: 2
         },
         {
             id: 'PG_UPDATE',
             name: 'Atualizar Status no PostgreSQL',
             method: 'POST',
             url: '{{baseUrl}}/db/pg/query',
-            headers: { 'Authorization': 'Bearer {{token}}', 'Content-Type': 'application/json' },
             body: {
                 sql: 'UPDATE orders SET status = $1, payment_id = $2, updated_at = NOW() WHERE id = $3',
                 params: ['confirmed', '{{paymentId}}', '{{orderId}}']
             },
-            validate: { status: 200 }
+            validate: { status: 200 },
+            messageCount: 2
         },
         {
             id: 'Q_PUBLISH',
             name: 'Publicar Evento na Fila',
             method: 'POST',
             url: '{{baseUrl}}/queue/publish',
-            headers: { 'Authorization': 'Bearer {{token}}', 'Content-Type': 'application/json' },
             body: {
                 exchange: 'order.events',
                 routingKey: 'order.confirmed',
@@ -145,26 +169,26 @@ const FullIntegrationFlow = {
                 message: {
                     event: 'order.confirmed',
                     orderId: '{{orderId}}',
-                    userId: '{{userId}}',
+                    userId: 'usr_001',
                     paymentId: '{{paymentId}}',
                     total: 159.97
                 }
             },
             extract: { queueMessageId: 'messageId' },
-            validate: { status: 200 }
+            validate: { status: 200 },
+            messageCount: 2
         },
         {
             id: 'MONGO_LOG',
             name: 'Registrar no MongoDB',
             method: 'POST',
             url: '{{baseUrl}}/db/mongo/insert',
-            headers: { 'Authorization': 'Bearer {{token}}', 'Content-Type': 'application/json' },
             body: {
                 collection: 'order_events',
                 document: {
                     event: 'checkout.completed',
                     orderId: '{{orderId}}',
-                    userId: '{{userId}}',
+                    userId: 'usr_001',
                     paymentId: '{{paymentId}}',
                     transactionId: '{{transactionId}}',
                     address: '{{cidade}}-{{estado}}',
@@ -173,27 +197,27 @@ const FullIntegrationFlow = {
                 }
             },
             extract: { eventDocId: 'insertedIds.0' },
-            validate: { status: 201 }
+            validate: { status: 201 },
+            messageCount: 2
         },
         {
             id: 'CACHE',
             name: 'Cache do Pedido no Redis',
             method: 'POST',
             url: '{{baseUrl}}/db/redis/set',
-            headers: { 'Authorization': 'Bearer {{token}}', 'Content-Type': 'application/json' },
             body: {
                 key: 'order:{{orderId}}',
-                value: { orderId: '{{orderId}}', status: 'confirmed', total: 159.97, userId: '{{userId}}' },
+                value: { orderId: '{{orderId}}', status: 'confirmed', total: 159.97, userId: 'usr_001' },
                 ttl: 7200
             },
-            validate: { status: 200 }
+            validate: { status: 200 },
+            messageCount: 2
         },
         {
             id: 'EMAIL',
             name: 'Enviar Email de Confirmação',
             method: 'POST',
             url: '{{baseUrl}}/notifications/email',
-            headers: { 'Authorization': 'Bearer {{token}}', 'Content-Type': 'application/json' },
             body: {
                 to: '{{email}}',
                 subject: 'Pedido Confirmado #{{orderId}}',
@@ -202,32 +226,33 @@ const FullIntegrationFlow = {
             },
             extract: { emailId: 'id' },
             validate: { status: 200 },
-            continueOnError: true
+            continueOnError: true,
+            messageCount: 2
         },
         {
             id: 'PUSH',
             name: 'Push Notification',
             method: 'POST',
             url: '{{baseUrl}}/notifications/push',
-            headers: { 'Authorization': 'Bearer {{token}}', 'Content-Type': 'application/json' },
             body: {
-                userId: '{{userId}}',
+                userId: 'usr_001',
                 title: 'Pedido Confirmado! 🎉',
                 body: 'Seu pedido #{{orderId}} de R$ 159,97 foi confirmado.'
             },
             validate: { status: 200 },
-            continueOnError: true
+            continueOnError: true,
+            messageCount: 2
         },
         {
             id: 'SCORE',
             name: 'Atualizar Credit Score (API Externa)',
             method: 'POST',
             url: '{{baseUrl}}/external/credit-score',
-            headers: { 'Authorization': 'Bearer {{token}}', 'Content-Type': 'application/json' },
             body: { cpf: '123.456.789-00' },
             extract: { creditScore: 'score', creditRisk: 'risk' },
             validate: { status: 200 },
-            continueOnError: true
+            continueOnError: true,
+            messageCount: 2
         }
     ]
 };

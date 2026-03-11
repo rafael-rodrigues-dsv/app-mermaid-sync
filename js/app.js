@@ -45,11 +45,13 @@
             tertiaryColor: '#161b22',
             fontFamily: 'Segoe UI, sans-serif'
         },
-        flowchart: {
-            htmlLabels: true,
-            curve: 'basis',
+        sequence: {
             useMaxWidth: true,
-            padding: 15
+            showSequenceNumbers: false,
+            actorMargin: 50,
+            messageMargin: 40,
+            mirrorActors: true,
+            wrap: true
         }
     });
 
@@ -77,45 +79,64 @@
         try {
             const { svg } = await mermaid.render(diagramId, flow.diagram);
             diagramContainer.innerHTML = svg;
+            buildMessageIndexMap(flow);
+            tagMessages();
         } catch (err) {
             diagramContainer.innerHTML = `<p style="color:#f85149;">Erro ao renderizar diagrama: ${err.message}</p>`;
         }
     }
 
     // ═══════════════════════════════════════════════════════════
-    // Highlight de nós do diagrama
+    // Sequence diagram message highlighting
     // ═══════════════════════════════════════════════════════════
-    function setNodeState(nodeId, state) {
-        // Remove previous state classes
-        const svg = diagramContainer.querySelector('svg');
-        if (!svg) return;
+    let messageIndexMap = []; // maps step index to {start, end} message indices
 
-        // Mermaid wraps nodes in elements with data-id or id containing the node name
-        const allNodes = svg.querySelectorAll('.node');
-        allNodes.forEach(node => {
-            const nodeText = node.getAttribute('id') || '';
-            const dataId = node.getAttribute('data-id') || '';
-            // Match by node id in the mermaid graph
-            if (nodeText.includes(nodeId) || dataId.includes(nodeId) ||
-                nodeText.startsWith('flowchart-' + nodeId + '-')) {
-                node.classList.remove('node-running', 'node-success', 'node-error', 'node-pending');
-                if (state) {
-                    node.classList.add('node-' + state);
-                }
-            }
+    function buildMessageIndexMap(flow) {
+        messageIndexMap = [];
+        let currentIndex = 0;
+        flow.steps.forEach(step => {
+            const count = step.messageCount || 1;
+            messageIndexMap.push({ start: currentIndex, end: currentIndex + count - 1 });
+            currentIndex += count;
         });
     }
 
-    function resetAllNodes() {
+    function tagMessages() {
         const svg = diagramContainer.querySelector('svg');
         if (!svg) return;
-        svg.querySelectorAll('.node').forEach(node => {
-            node.classList.remove('node-running', 'node-success', 'node-error', 'node-pending');
+        const texts = svg.querySelectorAll('.messageText');
+        texts.forEach((text, i) => text.setAttribute('data-msg-index', i));
+        const lines = svg.querySelectorAll('.messageLine0, .messageLine1');
+        lines.forEach((line, i) => line.setAttribute('data-msg-index', i));
+    }
+
+    function setMessageState(stepIndex, state) {
+        if (stepIndex < 0 || stepIndex >= messageIndexMap.length) return;
+        const { start, end } = messageIndexMap[stepIndex];
+        const svg = diagramContainer.querySelector('svg');
+        if (!svg) return;
+
+        for (let i = start; i <= end; i++) {
+            svg.querySelectorAll(`[data-msg-index="${i}"]`).forEach(el => {
+                el.classList.remove('msg-running', 'msg-success', 'msg-error', 'msg-pending');
+                if (state) el.classList.add('msg-' + state);
+            });
+        }
+    }
+
+    function resetAllMessages() {
+        const svg = diagramContainer.querySelector('svg');
+        if (!svg) return;
+        svg.querySelectorAll('.msg-running, .msg-success, .msg-error, .msg-pending').forEach(el => {
+            el.classList.remove('msg-running', 'msg-success', 'msg-error', 'msg-pending');
         });
     }
 
-    function setAllNodesPending(flow) {
-        flow.steps.forEach(step => setNodeState(step.id, 'pending'));
+    function setAllMessagesPending() {
+        if (!selectedFlow) return;
+        for (let i = 0; i < selectedFlow.steps.length; i++) {
+            setMessageState(i, 'pending');
+        }
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -145,13 +166,22 @@
     // ═══════════════════════════════════════════════════════════
     FlowExecutor.setCallbacks({
         stepStart(step, reqInfo) {
-            setNodeState(step.id, 'running');
+            const stepIdx = selectedFlow ? selectedFlow.steps.indexOf(step) : -1;
+            setMessageState(stepIdx, 'running');
             stepDetail.classList.remove('hidden');
             requestInfo.textContent = JSON.stringify(reqInfo, null, 2);
             responseInfo.textContent = '⏳ Aguardando resposta...';
+
+            // Auto-scroll to highlighted messages
+            const svg = diagramContainer.querySelector('svg');
+            if (svg && stepIdx >= 0 && messageIndexMap[stepIdx]) {
+                const firstMsg = svg.querySelector(`[data-msg-index="${messageIndexMap[stepIdx].start}"]`);
+                if (firstMsg) firstMsg.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
         },
         stepEnd(step, status, reqInfo, resInfo) {
-            setNodeState(step.id, status);
+            const stepIdx = selectedFlow ? selectedFlow.steps.indexOf(step) : -1;
+            setMessageState(stepIdx, status);
             responseInfo.textContent = JSON.stringify(resInfo, null, 2);
         },
         flowEnd(flow, context) {
@@ -227,8 +257,8 @@
         if (!selectedFlow) return;
         stepMode = false;
         clearLog();
-        resetAllNodes();
-        setAllNodesPending(selectedFlow);
+        resetAllMessages();
+        setAllMessagesPending();
         setButtons('running');
         FlowExecutor.setDelay(parseInt(speedRange.value));
         await FlowExecutor.run(selectedFlow);
@@ -240,8 +270,8 @@
         if (!stepMode) {
             stepMode = true;
             clearLog();
-            resetAllNodes();
-            setAllNodesPending(selectedFlow);
+            resetAllMessages();
+            setAllMessagesPending();
             FlowExecutor.prepareForStepping(selectedFlow);
             setButtons('stepping');
         }

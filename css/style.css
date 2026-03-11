@@ -283,37 +283,46 @@ main {
     margin-right: 0.5rem;
 }
 
-/* Mermaid node states */
-.node-running rect,
-.node-running circle,
-.node-running polygon {
-    fill: #d29922 !important;
+/* Sequence diagram message states */
+.messageText.msg-running {
+    fill: #f0c000 !important;
+    font-weight: bold !important;
+    font-size: 1.1em !important;
+    animation: pulse 0.8s ease-in-out infinite;
+}
+.messageLine0.msg-running,
+.messageLine1.msg-running {
     stroke: #f0c000 !important;
     stroke-width: 3px !important;
     animation: pulse 0.8s ease-in-out infinite;
 }
 
-.node-success rect,
-.node-success circle,
-.node-success polygon {
-    fill: #238636 !important;
+.messageText.msg-success {
+    fill: #3fb950 !important;
+    font-weight: bold !important;
+}
+.messageLine0.msg-success,
+.messageLine1.msg-success {
     stroke: #3fb950 !important;
-    stroke-width: 2px !important;
+    stroke-width: 2.5px !important;
 }
 
-.node-error rect,
-.node-error circle,
-.node-error polygon {
-    fill: #da3633 !important;
+.messageText.msg-error {
+    fill: #f85149 !important;
+    font-weight: bold !important;
+}
+.messageLine0.msg-error,
+.messageLine1.msg-error {
     stroke: #f85149 !important;
-    stroke-width: 2px !important;
+    stroke-width: 2.5px !important;
 }
 
-.node-pending rect,
-.node-pending circle,
-.node-pending polygon {
-    fill: #21262d !important;
-    stroke: #30363d !important;
+.messageText.msg-pending {
+    opacity: 0.35;
+}
+.messageLine0.msg-pending,
+.messageLine1.msg-pending {
+    opacity: 0.35;
 }
 
 @keyframes pulse {

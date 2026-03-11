@@ -1,5 +1,6 @@
 /**
  * Flow: Autenticação → Token → Acessar Recurso Protegido
+ * Sequence diagram com raias por camada
  */
 const AuthFlow = {
     id: 'auth-flow',
@@ -10,26 +11,62 @@ const AuthFlow = {
         email: 'admin@test.com',
         password: 'admin123'
     },
-    diagram: `graph TD
-        START([🚀 Início]) --> LOGIN[🔐 POST /auth/login]
-        LOGIN -->|200 OK| GET_USER[👤 GET /users/me]
-        LOGIN -->|401| ERR_LOGIN[❌ Login Falhou]
-        GET_USER -->|200 OK| REFRESH[🔄 POST /auth/refresh]
-        GET_USER -->|403| ERR_AUTH[❌ Não Autorizado]
-        REFRESH -->|200 OK| GET_USERS[📋 GET /users]
-        REFRESH -->|401| ERR_REFRESH[❌ Token Expirado]
-        GET_USERS -->|200 OK| LOGOUT[🚪 POST /auth/logout]
-        LOGOUT --> FIM([✅ Fim])
-        ERR_LOGIN --> FIM_ERR([❌ Fim com Erro])
-        ERR_AUTH --> FIM_ERR
-        ERR_REFRESH --> FIM_ERR
+    diagram: `sequenceDiagram
+        box rgb(30,40,60) 🖥️ Cliente
+            participant Client as 🌐 Browser
+        end
+        box rgb(25,50,40) 🔀 API Gateway
+            participant GW as 🔀 Gateway
+        end
+        box rgb(40,30,55) 🔐 Auth Service
+            participant Auth as 🔐 Auth API
+        end
+        box rgb(30,45,35) 👤 User Service
+            participant User as 👤 User API
+        end
+        box rgb(50,30,30) 🗄️ Data Layer
+            participant PG as 🐘 PostgreSQL
+            participant Redis as ⚡ Redis
+        end
 
-        style START fill:#1f6feb,stroke:#58a6ff,color:#fff
-        style FIM fill:#238636,stroke:#3fb950,color:#fff
-        style FIM_ERR fill:#da3633,stroke:#f85149,color:#fff
-        style ERR_LOGIN fill:#da3633,stroke:#f85149,color:#fff
-        style ERR_AUTH fill:#da3633,stroke:#f85149,color:#fff
-        style ERR_REFRESH fill:#da3633,stroke:#f85149,color:#fff`,
+        Client->>+GW: POST /auth/login
+        GW->>+Auth: Forward login
+        Auth->>+PG: SELECT user WHERE email
+        PG-->>-Auth: User row
+        Auth->>+Redis: SET session token (TTL 3600)
+        Redis-->>-Auth: OK
+        Auth-->>-GW: 200 token + refreshToken
+        GW-->>-Client: 200 JWT Token
+
+        Client->>+GW: GET /users/usr_001 🔑
+        GW->>+User: Forward + Bearer token
+        User->>+Redis: GET cache:user:usr_001
+        Redis-->>-User: HIT cached data
+        User-->>-GW: 200 User profile
+        GW-->>-Client: 200 { id, name, email }
+
+        Client->>+GW: POST /auth/refresh
+        GW->>+Auth: Refresh token
+        Auth->>+Redis: VALIDATE refreshToken
+        Redis-->>-Auth: Valid
+        Auth->>+Redis: SET new session token
+        Redis-->>-Auth: OK
+        Auth-->>-GW: 200 newToken
+        GW-->>-Client: 200 New JWT
+
+        Client->>+GW: GET /users (list)
+        GW->>+User: List all users
+        User->>+PG: SELECT * FROM users
+        PG-->>-User: 3 rows
+        User-->>-GW: 200 users[]
+        GW-->>-Client: 200 { data: [...] }
+
+        Client->>+GW: POST /auth/logout
+        GW->>+Auth: Logout
+        Auth->>+Redis: DEL session token
+        Redis-->>-Auth: Deleted
+        Auth-->>-GW: 200 OK
+        GW-->>-Client: 200 ✅`,
     steps: [
         {
             id: 'LOGIN',
@@ -37,13 +74,9 @@ const AuthFlow = {
             method: 'POST',
             url: '{{baseUrl}}/auth/login',
             body: { email: '{{email}}', password: '{{password}}' },
-            extract: {
-                token: 'token',
-                refreshToken: 'refreshToken',
-                userId: 'user.id',
-                userName: 'user.name'
-            },
-            validate: { status: 200 }
+            extract: { token: 'token', refreshToken: 'refreshToken', userId: 'user.id', userName: 'user.name' },
+            validate: { status: 200 },
+            messageCount: 8
         },
         {
             id: 'GET_USER',
@@ -51,10 +84,9 @@ const AuthFlow = {
             method: 'GET',
             url: '{{baseUrl}}/users/{{userId}}',
             headers: { 'Authorization': 'Bearer {{token}}', 'Content-Type': 'application/json' },
-            extract: {
-                userEmail: 'email'
-            },
-            validate: { status: 200 }
+            extract: { userEmail: 'email' },
+            validate: { status: 200 },
+            messageCount: 6
         },
         {
             id: 'REFRESH',
@@ -62,11 +94,9 @@ const AuthFlow = {
             method: 'POST',
             url: '{{baseUrl}}/auth/refresh',
             body: { refreshToken: '{{refreshToken}}' },
-            extract: {
-                token: 'token',
-                refreshToken: 'refreshToken'
-            },
-            validate: { status: 200 }
+            extract: { token: 'token', refreshToken: 'refreshToken' },
+            validate: { status: 200 },
+            messageCount: 8
         },
         {
             id: 'GET_USERS',
@@ -74,10 +104,9 @@ const AuthFlow = {
             method: 'GET',
             url: '{{baseUrl}}/users',
             headers: { 'Authorization': 'Bearer {{token}}', 'Content-Type': 'application/json' },
-            extract: {
-                totalUsers: 'total'
-            },
-            validate: { status: 200 }
+            extract: { totalUsers: 'total' },
+            validate: { status: 200 },
+            messageCount: 6
         },
         {
             id: 'LOGOUT',
@@ -85,7 +114,8 @@ const AuthFlow = {
             method: 'POST',
             url: '{{baseUrl}}/auth/logout',
             headers: { 'Authorization': 'Bearer {{token}}', 'Content-Type': 'application/json' },
-            validate: { status: 200 }
+            validate: { status: 200 },
+            messageCount: 6
         }
     ]
 };
