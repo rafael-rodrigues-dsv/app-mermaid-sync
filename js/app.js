@@ -24,6 +24,11 @@
     const requestInfo = document.getElementById('requestInfo');
     const responseInfo = document.getElementById('responseInfo');
     const logEntries = document.getElementById('logEntries');
+    const badgeSteps = document.getElementById('badgeSteps');
+    const badgeStatus = document.getElementById('badgeStatus');
+    const progressFill = document.getElementById('progressFill');
+    const progressText = document.getElementById('progressText');
+    const diagramBadges = document.getElementById('diagramBadges');
 
     let selectedFlow = null;
     let stepMode = false;
@@ -36,22 +41,32 @@
         theme: 'dark',
         themeVariables: {
             darkMode: true,
-            background: '#161b22',
-            primaryColor: '#21262d',
-            primaryTextColor: '#c9d1d9',
-            primaryBorderColor: '#30363d',
-            lineColor: '#8b949e',
+            background: '#0a0e14',
+            primaryColor: '#1c2533',
+            primaryTextColor: '#e2e8f0',
+            primaryBorderColor: '#1e2a3a',
+            lineColor: '#556677',
             secondaryColor: '#1f6feb',
-            tertiaryColor: '#161b22',
-            fontFamily: 'Segoe UI, sans-serif'
+            tertiaryColor: '#111820',
+            fontFamily: 'Inter, Segoe UI, sans-serif',
+            noteBkgColor: '#1c253380',
+            noteTextColor: '#8899aa',
+            noteBorderColor: '#263345',
+            actorBkg: '#171f2a',
+            actorBorder: '#263345',
+            actorTextColor: '#e2e8f0',
+            activationBkgColor: '#1f6feb33',
+            activationBorderColor: '#1f6feb',
+            sequenceNumberColor: '#58a6ff'
         },
         sequence: {
             useMaxWidth: true,
             showSequenceNumbers: false,
             actorMargin: 50,
-            messageMargin: 40,
+            messageMargin: 35,
             mirrorActors: true,
-            wrap: true
+            wrap: true,
+            bottomMarginAdj: 10
         }
     });
 
@@ -162,6 +177,38 @@
     }
 
     // ═══════════════════════════════════════════════════════════
+    // Status / Progress helpers
+    // ═══════════════════════════════════════════════════════════
+    function updateBadges(stepsCount, statusText, statusClass) {
+        badgeSteps.textContent = stepsCount + ' steps';
+        badgeStatus.textContent = statusText;
+        badgeStatus.className = 'badge badge-' + statusClass;
+    }
+
+    function updateProgress(current, total) {
+        const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+        progressFill.style.width = pct + '%';
+        progressText.textContent = current + '/' + total;
+    }
+
+    function renderDiagramBadges(flow) {
+        if (!diagramBadges) return;
+        // Extract unique component types from the diagram
+        const diagram = flow.diagram || '';
+        const techs = [];
+        if (/PostgreSQL|PG/i.test(diagram)) techs.push({ label: 'PostgreSQL', color: '#336791' });
+        if (/MongoDB|Mongo/i.test(diagram)) techs.push({ label: 'MongoDB', color: '#4db33d' });
+        if (/Redis/i.test(diagram)) techs.push({ label: 'Redis', color: '#dc382d' });
+        if (/RabbitMQ|Queue/i.test(diagram)) techs.push({ label: 'RabbitMQ', color: '#ff6600' });
+        if (/Payment|Pay|Pagamento/i.test(diagram)) techs.push({ label: 'Payment', color: '#8b5cf6' });
+        if (/Email|Push|Notif/i.test(diagram)) techs.push({ label: 'Notify', color: '#6366f1' });
+        if (/CEP|Shipping|Exchange|Credit|Externa/i.test(diagram)) techs.push({ label: 'External API', color: '#06b6d4' });
+        diagramBadges.innerHTML = techs.map(t =>
+            `<span class="badge" style="background:${t.color}22;color:${t.color};border:1px solid ${t.color}44;font-size:0.6rem">${t.label}</span>`
+        ).join('');
+    }
+
+    // ═══════════════════════════════════════════════════════════
     // Flow Executor Callbacks
     // ═══════════════════════════════════════════════════════════
     FlowExecutor.setCallbacks({
@@ -171,6 +218,7 @@
             stepDetail.classList.remove('hidden');
             requestInfo.textContent = JSON.stringify(reqInfo, null, 2);
             responseInfo.textContent = '⏳ Aguardando resposta...';
+            updateProgress(stepIdx + 1, selectedFlow ? selectedFlow.steps.length : 0);
 
             // Auto-scroll to highlighted messages
             const svg = diagramContainer.querySelector('svg');
@@ -186,6 +234,8 @@
         },
         flowEnd(flow, context) {
             setButtons('finished');
+            updateBadges(flow.steps.length, 'Done', 'green');
+            updateProgress(flow.steps.length, flow.steps.length);
             addLog('info', '────────────────────────────');
             addLog('info', '📊 Contexto final:');
             addLog('info', JSON.stringify(context, null, 2));
@@ -199,31 +249,37 @@
     // Controle de botões
     // ═══════════════════════════════════════════════════════════
     function setButtons(state) {
+        const totalSteps = selectedFlow ? selectedFlow.steps.length : 0;
         switch (state) {
             case 'idle':
                 btnRun.disabled = !selectedFlow;
                 btnStep.disabled = !selectedFlow;
                 btnReset.disabled = true;
-                btnRun.textContent = '▶ Executar Flow';
-                btnStep.textContent = '⏭ Step-by-Step';
+                btnRun.querySelector('span').textContent = 'Run';
+                btnStep.querySelector('span').textContent = 'Step';
+                updateBadges(totalSteps, 'Idle', 'blue');
+                updateProgress(0, totalSteps);
                 break;
             case 'running':
                 btnRun.disabled = true;
                 btnStep.disabled = true;
                 btnReset.disabled = false;
-                btnRun.textContent = '⏳ Executando...';
+                btnRun.querySelector('span').textContent = 'Running...';
+                updateBadges(totalSteps, 'Running', 'yellow');
                 break;
             case 'stepping':
                 btnRun.disabled = true;
                 btnStep.disabled = false;
                 btnReset.disabled = false;
-                btnStep.textContent = '⏭ Próximo Step';
+                btnStep.querySelector('span').textContent = 'Next';
+                updateBadges(totalSteps, 'Stepping', 'yellow');
                 break;
             case 'finished':
                 btnRun.disabled = true;
                 btnStep.disabled = true;
                 btnReset.disabled = false;
-                btnRun.textContent = '✅ Concluído';
+                btnRun.querySelector('span').textContent = 'Done';
+                updateBadges(totalSteps, 'Done', 'green');
                 break;
         }
     }
@@ -237,12 +293,14 @@
 
         if (selectedFlow) {
             await renderDiagram(selectedFlow);
+            renderDiagramBadges(selectedFlow);
             flowInfo.classList.remove('hidden');
             flowTitle.textContent = selectedFlow.name;
             flowDescription.textContent = selectedFlow.description;
             setButtons('idle');
         } else {
-            diagramContainer.innerHTML = '<p style="color:#8b949e;text-align:center;padding:2rem;">Selecione um flow para visualizar</p>';
+            diagramContainer.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:3rem;font-size:0.9rem;">Selecione um diagrama de arquitetura</p>';
+            if (diagramBadges) diagramBadges.innerHTML = '';
             flowInfo.classList.add('hidden');
             setButtons('idle');
         }
@@ -296,6 +354,7 @@
 
         if (selectedFlow) {
             await renderDiagram(selectedFlow);
+            renderDiagramBadges(selectedFlow);
             setButtons('idle');
         }
     });
@@ -309,6 +368,6 @@
     // ═══════════════════════════════════════════════════════════
     // Init
     // ═══════════════════════════════════════════════════════════
-    diagramContainer.innerHTML = '<p style="color:#8b949e;text-align:center;padding:2rem;">👆 Selecione um flow para começar</p>';
+    diagramContainer.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:3rem;font-size:0.9rem;">Selecione um diagrama de arquitetura</p>';
     setButtons('idle');
 })();
