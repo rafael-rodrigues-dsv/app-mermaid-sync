@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mermaid Integration Flows</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <header>
+        <h1>🔀 Integration Flow Runner</h1>
+        <p>Visualize e execute fluxos de integração interativamente</p>
+    </header>
+
+    <main>
+        <section class="controls">
+            <div class="flow-selector">
+                <label for="flowSelect">Selecionar Flow:</label>
+                <select id="flowSelect">
+                    <option value="">-- Escolha um flow --</option>
+                </select>
+            </div>
+            <div class="actions">
+                <button id="btnRun" disabled>▶ Executar Flow</button>
+                <button id="btnStep" disabled>⏭ Step-by-Step</button>
+                <button id="btnReset" disabled>🔄 Reset</button>
+            </div>
+            <div class="speed-control">
+                <label for="speedRange">Velocidade:</label>
+                <input type="range" id="speedRange" min="200" max="3000" value="1000" step="100">
+                <span id="speedLabel">1.0s</span>
+            </div>
+        </section>
+
+        <div class="workspace">
+            <section class="diagram-panel">
+                <h2>📊 Diagrama</h2>
+                <div id="mermaidDiagram" class="mermaid-container"></div>
+            </section>
+
+            <section class="details-panel">
+                <h2>📋 Detalhes da Execução</h2>
+
+                <div id="flowInfo" class="flow-info hidden">
+                    <h3 id="flowTitle"></h3>
+                    <p id="flowDescription"></p>
+                </div>
+
+                <div id="stepDetail" class="step-detail hidden">
+                    <h3>🔹 Step Atual</h3>
+                    <div class="step-info">
+                        <div class="request-block">
+                            <h4>Request</h4>
+                            <pre id="requestInfo"></pre>
+                        </div>
+                        <div class="response-block">
+                            <h4>Response</h4>
+                            <pre id="responseInfo"></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="executionLog" class="execution-log">
+                    <h3>📜 Log de Execução</h3>
+                    <div id="logEntries"></div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+    <script src="js/mock-server.js"></script>
+    <script src="js/flows/auth-flow.js"></script>
+    <script src="js/flows/order-flow.js"></script>
+    <script src="js/flows/user-crud-flow.js"></script>
+    <script src="js/flow-executor.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
