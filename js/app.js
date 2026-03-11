@@ -5,7 +5,7 @@
     // ═══════════════════════════════════════════════════════════
     // Registry de flows disponíveis
     // ═══════════════════════════════════════════════════════════
-    const FLOWS = [AuthFlow, OrderFlow, UserCrudFlow];
+    const FLOWS = [AuthFlow, OrderFlow, UserCrudFlow, QueueFlow, DatabaseFlow, FullIntegrationFlow];
 
     // ═══════════════════════════════════════════════════════════
     // DOM Elements
