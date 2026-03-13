@@ -12,19 +12,19 @@ const AuthFlow = {
         password: 'admin123'
     },
     diagram: `sequenceDiagram
-        box rgb(30,40,60) 🖥️ Cliente
+        box rgb(232,240,254) 🖥️ Cliente
             participant Client as 🌐 Browser
         end
-        box rgb(25,50,40) 🔀 API Gateway
+        box rgb(225,245,235) 🔀 API Gateway
             participant GW as 🔀 Gateway
         end
-        box rgb(40,30,55) 🔐 Auth Service
+        box rgb(237,231,246) 🔐 Auth Service
             participant Auth as 🔐 Auth API
         end
-        box rgb(30,45,35) 👤 User Service
+        box rgb(232,245,233) 👤 User Service
             participant User as 👤 User API
         end
-        box rgb(50,30,30) 🗄️ Data Layer
+        box rgb(255,243,224) 🗄️ Data Layer
             participant PG as 🐘 PostgreSQL
             participant Redis as ⚡ Redis
         end

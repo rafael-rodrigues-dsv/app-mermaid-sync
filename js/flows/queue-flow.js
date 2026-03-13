@@ -12,23 +12,23 @@ const QueueFlow = {
         password: 'admin123'
     },
     diagram: `sequenceDiagram
-        box rgb(30,40,60) 🖥️ Aplicação
+        box rgb(232,240,254) 🖥️ Aplicação
             participant App as 📦 Order Service
         end
-        box rgb(55,40,15) 📨 Mensageria
+        box rgb(255,248,225) 📨 Mensageria
             participant RMQ as 📨 RabbitMQ
             participant DLQ as 💀 Dead Letter Queue
         end
-        box rgb(35,30,55) ⚙️ Workers
+        box rgb(237,231,246) ⚙️ Workers
             participant Worker as ⚙️ Consumer Worker
         end
-        box rgb(50,30,30) 🐘 Banco Relacional
+        box rgb(255,243,224) 🐘 Banco Relacional
             participant PG as 🐘 PostgreSQL
         end
-        box rgb(30,45,25) 🍃 Banco NoSQL
+        box rgb(232,245,233) 🍃 Banco NoSQL
             participant Mongo as 🍃 MongoDB
         end
-        box rgb(55,25,25) ⚡ Cache
+        box rgb(252,228,236) ⚡ Cache
             participant Redis as ⚡ Redis
         end
 

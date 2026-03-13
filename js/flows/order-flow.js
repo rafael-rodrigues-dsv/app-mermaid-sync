@@ -12,24 +12,24 @@ const OrderFlow = {
         password: 'admin123'
     },
     diagram: `sequenceDiagram
-        box rgb(30,40,60) 🖥️ Cliente
+        box rgb(232,240,254) 🖥️ Cliente
             participant Client as 🌐 Browser
         end
-        box rgb(25,50,40) 🔀 APIs
+        box rgb(225,245,235) 🔀 APIs
             participant Auth as 🔐 Auth
             participant Order as 📦 Order API
         end
-        box rgb(55,30,50) 💳 Pagamento
+        box rgb(243,229,245) 💳 Pagamento
             participant Pay as 💳 Payment API
             participant PayGW as 🏦 Gateway Externo
         end
-        box rgb(50,30,30) 🗄️ Banco de Dados
+        box rgb(255,243,224) 🗄️ Banco de Dados
             participant PG as 🐘 PostgreSQL
         end
-        box rgb(45,40,20) 📨 Mensageria
+        box rgb(255,248,225) 📨 Mensageria
             participant Queue as 📨 RabbitMQ
         end
-        box rgb(35,25,55) 📧 Notificações
+        box rgb(237,231,246) 📧 Notificações
             participant Email as 📧 SMTP
             participant Push as 📱 Push Service
         end

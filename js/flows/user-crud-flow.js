@@ -12,19 +12,19 @@ const UserCrudFlow = {
         password: 'admin123'
     },
     diagram: `sequenceDiagram
-        box rgb(30,40,60) 🖥️ Cliente
+        box rgb(232,240,254) 🖥️ Cliente
             participant Client as 🌐 Browser
         end
-        box rgb(40,30,55) 🔐 Auth
+        box rgb(237,231,246) 🔐 Auth
             participant Auth as 🔐 Auth API
         end
-        box rgb(30,45,35) 👤 User Service
+        box rgb(232,245,233) 👤 User Service
             participant User as 👤 User API
         end
-        box rgb(50,30,30) 🗄️ Banco Relacional
+        box rgb(255,243,224) 🗄️ Banco Relacional
             participant PG as 🐘 PostgreSQL
         end
-        box rgb(55,25,25) ⚡ Cache
+        box rgb(252,228,236) ⚡ Cache
             participant Redis as ⚡ Redis
         end
 
