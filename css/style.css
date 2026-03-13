@@ -321,12 +321,38 @@ body {
 .workspace {
     flex: 1;
     display: grid;
-    grid-template-columns: 20px 1fr 340px;
+    grid-template-columns: 20px 1fr 5px 340px;
     grid-template-rows: 20px 1fr;
     grid-template-areas:
-        "corner  ruler-h  ruler-h"
-        "ruler-v canvas   panel";
+        "corner  ruler-h  ruler-h  ruler-h"
+        "ruler-v canvas   splitter panel";
     overflow: hidden;
+}
+
+/* ═══════════════════════════════════════════════
+   Splitter — drag to resize panels
+   ═══════════════════════════════════════════════ */
+.splitter-v {
+    grid-area: splitter;
+    background: var(--border);
+    cursor: col-resize;
+    position: relative;
+    z-index: 10;
+    transition: background 0.15s;
+}
+
+.splitter-v:hover,
+.splitter-v.active {
+    background: var(--accent);
+}
+
+.splitter-v::after {
+    content: '';
+    position: absolute;
+    left: -3px;
+    right: -3px;
+    top: 0;
+    bottom: 0;
 }
 
 /* ═══════════════════════════════════════════════
@@ -627,6 +653,24 @@ body {
     font-family: var(--font-mono) !important;
     font-size: 11px !important;
     font-weight: 400 !important;
+    cursor: pointer;
+}
+
+.mermaid-container .messageText:hover {
+    fill: var(--accent) !important;
+    font-weight: 600 !important;
+}
+
+.mermaid-container .messageText.msg-selected {
+    fill: var(--accent) !important;
+    font-weight: 700 !important;
+    text-decoration: underline;
+}
+
+.mermaid-container .messageLine0.msg-selected,
+.mermaid-container .messageLine1.msg-selected {
+    stroke: var(--accent) !important;
+    stroke-width: 2.5px !important;
 }
 
 /* Message lines */
@@ -754,11 +798,15 @@ body {
 @media (max-width: 1024px) {
     .workspace {
         grid-template-columns: 20px 1fr;
-        grid-template-rows: 20px 1fr 350px;
+        grid-template-rows: 20px 1fr 5px 350px;
         grid-template-areas:
             "corner  ruler-h"
             "ruler-v canvas"
+            "ruler-v splitter"
             "ruler-v panel";
+    }
+    .splitter-v {
+        cursor: row-resize;
     }
     .side-panel {
         border-left: none;

@@ -37,6 +37,7 @@
     let selectedFlow = null;
     let stepMode = false;
     let currentZoom = 100;
+    let executedSteps = []; // stores { step, requestInfo, responseInfo, status } for click inspection
 
     // ═══════════════════════════════════════════════════════════
     // Inicializar Mermaid — Visio light theme
@@ -239,9 +240,63 @@
         const svg = diagramContainer.querySelector('svg');
         if (!svg) return;
         const texts = svg.querySelectorAll('.messageText');
-        texts.forEach((text, i) => text.setAttribute('data-msg-index', i));
+        texts.forEach((text, i) => {
+            text.setAttribute('data-msg-index', i);
+            text.addEventListener('click', onMessageClick);
+        });
         const lines = svg.querySelectorAll('.messageLine0, .messageLine1');
         lines.forEach((line, i) => line.setAttribute('data-msg-index', i));
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // Click on diagram message to inspect step
+    // ═══════════════════════════════════════════════════════════
+    function onMessageClick(e) {
+        if (!selectedFlow) return;
+        const msgIndex = parseInt(e.target.getAttribute('data-msg-index'));
+        if (isNaN(msgIndex)) return;
+
+        // Find which step this message belongs to
+        const stepIdx = messageIndexMap.findIndex(m => msgIndex >= m.start && msgIndex <= m.end);
+        if (stepIdx < 0) return;
+
+        // Highlight the selected messages
+        const svg = diagramContainer.querySelector('svg');
+        if (svg) {
+            svg.querySelectorAll('.msg-selected').forEach(el => el.classList.remove('msg-selected'));
+            const { start, end } = messageIndexMap[stepIdx];
+            for (let i = start; i <= end; i++) {
+                svg.querySelectorAll(`[data-msg-index="${i}"]`).forEach(el => el.classList.add('msg-selected'));
+            }
+        }
+
+        // Show step info in side panel
+        const step = selectedFlow.steps[stepIdx];
+        const executed = executedSteps[stepIdx];
+
+        // Switch to inspector tab
+        spTabs.forEach(t => t.classList.remove('active'));
+        spTabs[0].classList.add('active');
+        tabInspector.classList.remove('hidden');
+        tabConsole.classList.add('hidden');
+
+        stepDetail.classList.remove('hidden');
+        if (executed) {
+            requestInfo.textContent = JSON.stringify(executed.requestInfo, null, 2);
+            responseInfo.textContent = JSON.stringify(executed.responseInfo, null, 2);
+        } else {
+            // Step not yet executed — show definition
+            const defInfo = {
+                step: stepIdx + 1,
+                id: step.id,
+                name: step.name,
+                method: step.method || 'GET',
+                url: step.url,
+                body: step.body || null
+            };
+            requestInfo.textContent = JSON.stringify(defInfo, null, 2);
+            responseInfo.textContent = 'Ainda não executado';
+        }
     }
 
     function setMessageState(stepIndex, state) {
@@ -358,6 +413,11 @@
             responseInfo.textContent = 'Aguardando resposta...';
             updateProgress(stepIdx + 1, selectedFlow ? selectedFlow.steps.length : 0);
 
+            // Store partial result for click inspection
+            if (stepIdx >= 0) {
+                executedSteps[stepIdx] = { step, requestInfo: reqInfo, responseInfo: null, status: 'running' };
+            }
+
             const svg = diagramContainer.querySelector('svg');
             if (svg && stepIdx >= 0 && messageIndexMap[stepIdx]) {
                 const firstMsg = svg.querySelector(`[data-msg-index="${messageIndexMap[stepIdx].start}"]`);
@@ -368,6 +428,11 @@
             const stepIdx = selectedFlow ? selectedFlow.steps.indexOf(step) : -1;
             setMessageState(stepIdx, status);
             responseInfo.textContent = JSON.stringify(resInfo, null, 2);
+
+            // Store complete result for click inspection
+            if (stepIdx >= 0) {
+                executedSteps[stepIdx] = { step, requestInfo: reqInfo, responseInfo: resInfo, status };
+            }
         },
         flowEnd(flow, context) {
             setButtons('finished');
@@ -447,12 +512,14 @@
         stepDetail.classList.add('hidden');
         clearLog();
         FlowExecutor.reset();
+        executedSteps = [];
         stepMode = false;
     });
 
     btnRun.addEventListener('click', async () => {
         if (!selectedFlow) return;
         stepMode = false;
+        executedSteps = [];
         clearLog();
         resetAllMessages();
         setAllMessagesPending();
@@ -466,6 +533,7 @@
 
         if (!stepMode) {
             stepMode = true;
+            executedSteps = [];
             clearLog();
             resetAllMessages();
             setAllMessagesPending();
@@ -503,6 +571,47 @@
         speedLabel.textContent = (val / 1000).toFixed(1) + 's';
         FlowExecutor.setDelay(val);
     });
+
+    // ═══════════════════════════════════════════════════════════
+    // Splitter — drag to resize panels
+    // ═══════════════════════════════════════════════════════════
+    const splitterV = document.getElementById('splitterV');
+    const workspace = document.querySelector('.workspace');
+
+    if (splitterV && workspace) {
+        let dragging = false;
+
+        splitterV.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            dragging = true;
+            splitterV.classList.add('active');
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!dragging) return;
+            const rect = workspace.getBoundingClientRect();
+            const rulerW = 20;
+            const splitterW = 5;
+            const x = e.clientX - rect.left;
+            const totalW = rect.width;
+            // panel width = distance from right edge to cursor
+            let panelW = totalW - x - splitterW / 2;
+            panelW = Math.max(200, Math.min(panelW, totalW - rulerW - 200));
+            const canvasW = totalW - rulerW - splitterW - panelW;
+            workspace.style.gridTemplateColumns = `${rulerW}px ${canvasW}px ${splitterW}px ${panelW}px`;
+            drawRulers();
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (!dragging) return;
+            dragging = false;
+            splitterV.classList.remove('active');
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        });
+    }
 
     // ═══════════════════════════════════════════════════════════
     // Init
